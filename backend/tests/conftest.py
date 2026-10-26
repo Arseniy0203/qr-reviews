@@ -14,9 +14,12 @@ os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://qr:qr@localhost:5432/qr_reviews_test"
 )
 os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
-os.environ.setdefault("HASH_SALT", "test-hash-salt")
-os.environ.setdefault("INTERNAL_API_SECRET", "test-internal-secret")
+os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef-0123456789"
+os.environ["HASH_SALT"] = "test-hash-salt-0123456789abcdef-0123456789"
+os.environ["INTERNAL_API_SECRET"] = "test-internal-secret-0123456789abcdef"
+os.environ["COOKIE_SECURE"] = "false"
+os.environ["PUBLIC_BASE_URL"] = "http://localhost:8080"
+os.environ["DASHBOARD_BASE_URL"] = "http://localhost:8080"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 
 import asyncio
@@ -54,8 +57,13 @@ async def _clean_state() -> AsyncIterator[None]:
     yield
     tables = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
     async with get_sessionmaker()() as session:
-        await session.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
-        await session.commit()
+        # All data hangs off organizations or users; TRUNCATE is slow, skip it when unused.
+        dirty = await session.scalar(
+            text("SELECT EXISTS (SELECT 1 FROM organizations) OR EXISTS (SELECT 1 FROM users)")
+        )
+        if dirty:
+            await session.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+            await session.commit()
     await get_redis().flushdb()
 
 

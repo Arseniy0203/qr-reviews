@@ -17,7 +17,9 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 COPY . .
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# --proxy-headers: client IP for rate limits / antifraud comes from nginx's X-Forwarded-For.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]
 
 # ---------------------------------------------------------------------------
 FROM base AS prod

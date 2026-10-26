@@ -58,6 +58,10 @@ class User(UUIDPkMixin, TimestampMixin, Base):
 
     memberships: Mapped[list["Membership"]] = relationship(back_populates="user", lazy="raise")
 
+    @property
+    def telegram_linked(self) -> bool:
+        return self.telegram_chat_id is not None
+
 
 class Membership(UUIDPkMixin, OrgScopedMixin, TimestampMixin, Base):
     __tablename__ = "memberships"
