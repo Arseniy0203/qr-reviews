@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#4f6bed">
+<link rel="icon" href="data:,">
+<title>{% block title %}Отзыв{% endblock %}</title>
+<style nonce="{{ nonce }}">{{ css|safe }}</style>
+</head>
+<body>
+<main class="card">
+{% block content %}{% endblock %}
+</main>
+<script nonce="{{ nonce }}">{{ js|safe }}</script>
+{% if metrika_id %}
+<script nonce="{{ nonce }}">(function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})(window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");ym({{ metrika_id|tojson }},"init",{clickmap:false,trackLinks:true,accurateTrackBounce:true});</script>
+{% endif %}
+</body>
+</html>

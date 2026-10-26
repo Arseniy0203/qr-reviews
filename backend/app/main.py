@@ -14,6 +14,7 @@ from app.core.db import dispose_engine, get_engine
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
 from app.core.redis import close_redis, get_redis
+from app.public_form.router import router as public_form_router
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
 
     register_error_handlers(app)
     app.include_router(api_router)
+    app.include_router(public_form_router)
 
     if settings.cors_origin_list:
         app.add_middleware(

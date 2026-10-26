@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }}{% endblock %}
+{% block content %}
+<p class="org">{{ public.organization.name }}</p>
+<h1>{{ heading }}</h1>
+<p class="muted">Редакция № {{ document.version }} от {{ document.published_at.strftime("%d.%m.%Y") }}</p>
+<div class="doc">{{ document.text }}</div>
+<div class="note">
+  <strong>Как отозвать согласие.</strong>
+  {% if public.settings.privacy_email %}
+  Напишите на <a href="mailto:{{ public.settings.privacy_email }}">{{ public.settings.privacy_email }}</a>
+  с номером телефона, который вы указали, или обратитесь к администратору.
+  {% else %}
+  Обратитесь к администратору.
+  {% endif %}
+  {% if document.type == "pd" %}После отзыва ваши имя и телефон будут удалены, а сам отзыв сохранится без персональных данных.{% endif %}
+</div>
+{% endblock %}

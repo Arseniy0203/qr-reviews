@@ -1,5 +1,6 @@
 """Passwords, JWT, and keyed hashing of identifiers (IP, device id, one-time tokens)."""
 
+import base64
 import hashlib
 import hmac
 import uuid
@@ -112,3 +113,36 @@ def hash_identifier(value: str) -> str:
 def hash_token(token: str) -> str:
     """Digest for high-entropy one-time tokens (invitations, Telegram link codes)."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+# --- Signed short-lived values (public form) -------------------------------------
+
+
+class BadSignatureError(Exception):
+    pass
+
+
+def _signature(purpose: str, body: str) -> str:
+    key = get_settings().secret_key.get_secret_value().encode()
+    digest = hmac.new(key, f"{purpose}|{body}".encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest[:18]).decode().rstrip("=")
+
+
+def sign_value(purpose: str, value: str, ttl: timedelta) -> str:
+    """`value.expires.signature`, bound to a purpose so tokens cannot be swapped between uses."""
+    expires = int((datetime.now(UTC) + ttl).timestamp())
+    body = f"{value}.{expires}"
+    return f"{body}.{_signature(purpose, body)}"
+
+
+def unsign_value(purpose: str, token: str) -> str:
+    try:
+        value, expires, signature = token.rsplit(".", 2)
+        body = f"{value}.{expires}"
+        if not hmac.compare_digest(signature, _signature(purpose, body)):
+            raise BadSignatureError("bad signature")
+        if int(expires) < datetime.now(UTC).timestamp():
+            raise BadSignatureError("expired")
+    except ValueError as exc:
+        raise BadSignatureError("malformed") from exc
+    return value

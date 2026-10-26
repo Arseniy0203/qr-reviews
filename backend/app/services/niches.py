@@ -16,6 +16,7 @@ class NicheCategory(BaseModel):
 
 class NicheFormTexts(BaseModel):
     title: str
+    title_with_employee: str = Field(pattern=r"\{name\}")
     rating_prompt: str
     categories_prompt: str
     text_label: str

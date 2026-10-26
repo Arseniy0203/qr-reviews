@@ -89,6 +89,26 @@ models/*.py      SQLAlchemy 2.0 declarative models only, no logic
 - Archiving a branch archives its QR points (employees stay). Archiving a point or employee
   closes open assignments. `is_active=false` is a pause, not a delete.
 
+- **Public form** (`app/public_form/`): GET form → POST review (303, PRG) → contact step (only
+  if `contact_step_enabled`) → thanks. Works without JS. CSS/JS live in `static/` but are
+  **inlined** into the page: one request, **budget ≤ 15 KB raw** (a test enforces it; now ~8 KB,
+  ~3 KB gzip). No external resources except optional Yandex Metrika. Strict CSP with a
+  per-request nonce, `Referrer-Policy: no-referrer` (the point token must not leak to maps),
+  `Cache-Control: no-store`. Tap targets ≥ 44 px (stars 56 px, buttons 52 px), inputs 16 px font.
+- Title: «Оцените работу мастера Анны» when an employee is assigned (`niche.form.title_with_employee`,
+  genitive by `services/names.py`, undeclined if unsure), otherwise the niche's neutral title.
+  The employee is resolved **at submit time**, not when the page was opened.
+- Form protection: signed `form_token` (2 h, bound to the point), `qr_device` cookie (HttpOnly,
+  path `/r`, 2 years), generous per-IP rate limit (`RATE_LIMIT_PUBLIC_FORM_*`, shared salon
+  Wi-Fi). A filled honeypot field means a bot: the request is answered as success and
+  **nothing is stored** (this is not a customer review, so the flag-don't-block rule does not apply).
+- Contact step: linked to the review by a signed `ref` (30 min, bound to the point). The form
+  posts the ids of the exact consent documents it displayed; both checkboxes are unchecked by
+  default, PD is required, marketing is optional. Consent pages `/r/{token}/consent/{pd|marketing}?v=<id>`
+  show that exact version and how to revoke (privacy_email).
+- Consent revocation: owner-only API `GET /api/v1/reviews/contacts?phone=` and
+  `POST /api/v1/reviews/contacts/revoke {phone, kind: pd|marketing}`.
+
 > ⚠️ **`PUBLIC_BASE_URL` is baked into every printed QR code.** It must be the final
 > production domain. Never print real QR codes for clients until the domain is fixed:
 > changing it later means reprinting every card, sticker and table tent.
@@ -109,7 +129,7 @@ models/*.py      SQLAlchemy 2.0 declarative models only, no logic
 - Отзыв хранит, на какой именно документ согласился клиент и когда:
   `pd_consent_document_id` + `pd_consent_at`, `marketing_consent_document_id` + `marketing_consent_at`.
 - Контакт (имя или телефон) без действующего согласия на ПД запрещён CHECK-ом в БД.
-- **Отзыв согласия** (этап 5): имя и телефон обнуляются во всех отзывах клиента в компании,
+- **Отзыв согласия** (`services/contact_service.py`): имя и телефон обнуляются во всех отзывах клиента в компании,
   проставляется `pd_consent_revoked_at` (и `marketing_consent_revoked_at`). Ссылка на документ
   и дата согласия сохраняются как доказательство. Сам отзыв о качестве остаётся.
 - Хранить ПД только на серверах в РФ (242-ФЗ, локализация).

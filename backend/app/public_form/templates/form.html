@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ public.title }}{% endblock %}
+{% block content %}
+<p class="org">{{ public.organization.name }} · {{ public.branch.name }}</p>
+<h1>{{ public.title }}</h1>
+{% if errors.form %}<p class="alert" role="alert">{{ errors.form }}</p>{% endif %}
+<form method="post" action="/r/{{ token }}">
+  <input type="hidden" name="form_token" value="{{ form_token }}">
+  <div class="hp" aria-hidden="true"><label>Сайт <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+
+  <fieldset>
+    <legend>{{ public.niche.form.rating_prompt }}</legend>
+    <div class="stars-row">
+      {% for value in [5, 4, 3, 2, 1] %}
+      <input type="radio" id="star{{ value }}" name="rating" value="{{ value }}" required{% if values.rating == value|string %} checked{% endif %}>
+      <label for="star{{ value }}"><span class="sr">{{ value }} из 5</span><span aria-hidden="true">★</span></label>
+      {% endfor %}
+    </div>
+    {% if errors.rating %}<p class="error" role="alert">{{ errors.rating }}</p>{% endif %}
+  </fieldset>
+
+  {% if public.categories %}
+  <fieldset class="chips">
+    <legend>{{ public.niche.form.categories_prompt }}</legend>
+    {% for category in public.categories %}
+    <input type="checkbox" id="cat{{ loop.index }}" name="category_ids" value="{{ category.id }}"{% if category.id|string in values.category_ids %} checked{% endif %}>
+    <label for="cat{{ loop.index }}">{{ category.name }}</label>
+    {% endfor %}
+  </fieldset>
+  {% endif %}
+
+  <label class="field">
+    <span>{{ public.niche.form.text_label }}</span>
+    <textarea name="text" rows="4" maxlength="{{ text_max }}" placeholder="{{ public.niche.form.text_placeholder }}">{{ values.text }}</textarea>
+  </label>
+  {% if errors.text %}<p class="error" role="alert">{{ errors.text }}</p>{% endif %}
+
+  <button type="submit" class="btn">{{ public.niche.form.submit }}</button>
+</form>
+{% endblock %}

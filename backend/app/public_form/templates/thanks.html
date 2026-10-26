@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ public.niche.form.thanks_title }}{% endblock %}
+{% block content %}
+<div class="done" aria-hidden="true">✓</div>
+<h1>{{ public.niche.form.thanks_title }}</h1>
+<p>{{ public.niche.form.thanks_text }}</p>
+{# Shown to every customer regardless of the rating: no review gating. #}
+{% if public.settings.yandex_maps_url or public.settings.two_gis_url %}
+<p class="muted">Будем благодарны, если вы расскажете о нас и на картах:</p>
+{% if public.settings.yandex_maps_url %}
+<a class="btn btn-map" href="{{ public.settings.yandex_maps_url }}" target="_blank" rel="noopener noreferrer">Оставить отзыв на Яндекс Картах</a>
+{% endif %}
+{% if public.settings.two_gis_url %}
+<a class="btn btn-2gis" href="{{ public.settings.two_gis_url }}" target="_blank" rel="noopener noreferrer">Оставить отзыв в 2ГИС</a>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -20,6 +20,8 @@ categories:
 
 form:
   title: Как прошёл ваш визит?
+  # {name}: employee's first name in the genitive case («Анны»).
+  title_with_employee: Оцените работу мастера {name}
   rating_prompt: Оцените визит
   categories_prompt: Что повлияло на оценку?
   text_label: Ваш отзыв

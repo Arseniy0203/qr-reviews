@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Оставьте контакт{% endblock %}
+{% block content %}
+<h1>{{ public.contact_offer }}</h1>
+<p class="muted">Это необязательно — можно пропустить.</p>
+{% if errors.form %}<p class="alert" role="alert">{{ errors.form }}</p>{% endif %}
+<form method="post" action="/r/{{ token }}/contact">
+  <input type="hidden" name="ref" value="{{ ref }}">
+  <input type="hidden" name="pd_document_id" value="{{ docs.pd.id }}">
+  {% if docs.marketing %}<input type="hidden" name="marketing_document_id" value="{{ docs.marketing.id }}">{% endif %}
+
+  <label class="field">
+    <span>Имя</span>
+    <input type="text" name="name" maxlength="100" autocomplete="given-name" value="{{ values.name }}">
+  </label>
+  {% if errors.name %}<p class="error" role="alert">{{ errors.name }}</p>{% endif %}
+
+  <label class="field">
+    <span>Телефон</span>
+    <input type="tel" name="phone" inputmode="tel" autocomplete="tel" maxlength="30" placeholder="+7 999 123-45-67" required value="{{ values.phone }}">
+  </label>
+  {% if errors.phone %}<p class="error" role="alert">{{ errors.phone }}</p>{% endif %}
+
+  <label class="check">
+    <input type="checkbox" name="pd_consent" value="1" required>
+    <span>Даю <a href="/r/{{ token }}/consent/pd?v={{ docs.pd.id }}" target="_blank" rel="noopener">согласие на обработку персональных данных</a></span>
+  </label>
+  {% if errors.pd_consent %}<p class="error" role="alert">{{ errors.pd_consent }}</p>{% endif %}
+
+  {% if docs.marketing %}
+  <label class="check">
+    <input type="checkbox" name="marketing_consent" value="1">
+    <span>Хочу получать сообщения об акциях и скидках (<a href="/r/{{ token }}/consent/marketing?v={{ docs.marketing.id }}" target="_blank" rel="noopener">согласие на рекламу</a>) — по желанию</span>
+  </label>
+  {% endif %}
+
+  <button type="submit" class="btn" name="action" value="save">Отправить</button>
+  <button type="submit" class="btn btn-ghost" name="action" value="skip" formnovalidate>Пропустить</button>
+</form>
+{% endblock %}
