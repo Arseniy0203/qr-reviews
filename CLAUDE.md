@@ -122,7 +122,9 @@ models/*.py          SQLAlchemy 2.x declarative models, no logic
   when unsure), otherwise the niche's neutral title.
 - Protection: signed `form_token` (2 h, bound to the point), `qr_device` cookie (HttpOnly,
   path `/r`, 2 y), rate limit, honeypot. **Filled honeypot → answered as success, nothing
-  stored** (a bot is not a customer review; awaiting final owner confirmation).
+  stored** (a bot is not a customer review; confirmed by the owner). Each hit is still
+  counted (log event / metric with point and org IDs only, no PD) so an attack on the form
+  is visible.
 - Unknown/archived point → 404 stub; paused point → 200 stub «приём приостановлен».
 - **No review gating:** Yandex Maps / 2GIS buttons on the thanks page for every rating, only if
   the URLs are set in settings.
@@ -133,9 +135,18 @@ models/*.py          SQLAlchemy 2.x declarative models, no logic
   same org), `ip_repeat` — IP is a **weak** signal: soft threshold only together with a burst or
   duplicate text, hard threshold (≥ 20/24 h) alone. Redis down → no flags (fail-open).
 
+**Negative alerts** (stage 6) — suspicious reviews (`is_suspicious`) **are alerted too**, marked
+with ⚠️ and the antifraud reason codes, so a fraudster cannot bury real negative under fakes.
+
 **Stats** (stage 7) — group by day/week/month **in the organization's timezone**
 (`OrgSettings.timezone`, default `Europe/Moscow`) with `AT TIME ZONE`; SQL aggregates + the
 indexes above, no pre-aggregation in MVP.
+
+**Customer contacts in the review feed** (stage 7) — a manager sees customer phones/names only
+for reviews of **their branch** (they call unhappy customers). The owner can turn this off:
+`OrgSettings.managers_see_contacts` (default `true`); when `false`, contacts are hidden from
+managers in API responses. Employees never see contacts. Phone search and consent revocation
+stay owner-only.
 
 ## Deviations from the original spec (approved)
 
