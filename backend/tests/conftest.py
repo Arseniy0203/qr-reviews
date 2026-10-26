@@ -36,7 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_sessionmaker
 from app.core.redis import get_redis
 from app.main import app
-from app.models import Base
+from app.models import Base, Role
+from tests.api_helpers import add_member, login
+from tests.factories import Team, add_branch, make_tenant
 
 ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
 
@@ -78,3 +80,25 @@ async def client() -> AsyncIterator[httpx.AsyncClient]:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+async def team(session: AsyncSession, client: httpx.AsyncClient) -> Team:
+    tenant = await make_tenant(session, "Лаванда")
+    branch_b, employee_b, point_b = await add_branch(session, tenant.org, "Филиал Б")
+    await session.commit()
+    for role, email, extra in [
+        (Role.OWNER, "owner@team.ru", {}),
+        (Role.MANAGER, "manager@team.ru", {"branch_id": tenant.branch.id}),
+        (Role.EMPLOYEE, "employee@team.ru", {"employee_id": tenant.employee.id}),
+    ]:
+        await add_member(session, tenant.org.id, role, email=email, **extra)
+    return Team(
+        tenant=tenant,
+        branch_b=branch_b,
+        employee_b=employee_b,
+        point_b=point_b,
+        owner=await login(client, "owner@team.ru"),
+        manager=await login(client, "manager@team.ru"),
+        employee=await login(client, "employee@team.ru"),
+    )

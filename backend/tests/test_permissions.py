@@ -1,44 +1,14 @@
 """Role permissions, invitations and organization isolation at the API level."""
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ConsentDocument, ConsentType, Invitation, Role
-from tests.api_helpers import add_member, bearer, login, owner_token
-from tests.factories import Tenant, make_tenant
-
-
-@dataclass
-class Team:
-    tenant: Tenant
-    owner: str
-    manager: str
-    employee: str
-
-
-@pytest.fixture
-async def team(session: AsyncSession, client: httpx.AsyncClient) -> Team:
-    tenant = await make_tenant(session, "Лаванда")
-    await session.commit()
-    org_id = tenant.org.id
-    for role, email, extra in [
-        (Role.OWNER, "owner@team.ru", {}),
-        (Role.MANAGER, "manager@team.ru", {"branch_id": tenant.branch.id}),
-        (Role.EMPLOYEE, "employee@team.ru", {"employee_id": tenant.employee.id}),
-    ]:
-        await add_member(session, org_id, role, email=email, **extra)
-    return Team(
-        tenant=tenant,
-        owner=await login(client, "owner@team.ru"),
-        manager=await login(client, "manager@team.ru"),
-        employee=await login(client, "employee@team.ru"),
-    )
-
+from app.models import ConsentDocument, ConsentType, Invitation
+from tests.api_helpers import bearer, owner_token
+from tests.factories import Team, make_tenant
 
 # --- organization endpoints -------------------------------------------------------
 
@@ -54,7 +24,7 @@ async def test_every_role_can_read_own_organization(client: httpx.AsyncClient, t
 
 
 async def test_only_owner_updates_organization(client: httpx.AsyncClient, team: Team) -> None:
-    payload = {"settings": {"negative_threshold": 2, "collect_contact": True}}
+    payload = {"settings": {"negative_threshold": 2, "two_gis_url": "https://2gis.ru/x"}}
     for token in (team.manager, team.employee):
         response = await client.patch("/api/v1/organization", json=payload, headers=bearer(token))
         assert response.status_code == 403
@@ -63,8 +33,41 @@ async def test_only_owner_updates_organization(client: httpx.AsyncClient, team: 
     assert response.status_code == 200
     settings = response.json()["settings"]
     assert settings["negative_threshold"] == 2
-    assert settings["collect_contact"] is True
+    assert settings["two_gis_url"] == "https://2gis.ru/x"
     assert settings["timezone"] == "Europe/Moscow"  # untouched fields are kept
+
+
+LEGAL = {
+    "legal_name": "ООО «Лаванда»",
+    "inn": "7701234567",
+    "legal_address": "Москва, ул. Тверская, 1",
+    "privacy_email": "privacy@lavanda.ru",
+}
+
+
+async def test_collect_contact_requires_legal_details(
+    client: httpx.AsyncClient, team: Team
+) -> None:
+    async def patch(settings: dict[str, object]) -> httpx.Response:
+        return await client.patch(
+            "/api/v1/organization", json={"settings": settings}, headers=bearer(team.owner)
+        )
+
+    response = await patch({"collect_contact": True, "legal_name": LEGAL["legal_name"]})
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "legal_details_required"
+    assert body["fields"] == ["inn", "legal_address", "privacy_email"]
+    assert "ИНН" in body["detail"]
+
+    response = await patch({"collect_contact": True, **LEGAL})
+    assert response.status_code == 200
+    assert response.json()["settings"]["collect_contact"] is True
+
+    # Clearing a legal field while collecting contacts is rejected as well.
+    response = await patch({"inn": None})
+    assert response.status_code == 400
+    assert response.json()["fields"] == ["inn"]
 
 
 async def test_settings_update_validation(client: httpx.AsyncClient, team: Team) -> None:

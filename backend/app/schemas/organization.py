@@ -6,6 +6,14 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_vali
 
 from app.core.config import get_settings
 
+# PD operator details (152-FZ); all are required before customer contacts are collected.
+LEGAL_FIELD_LABELS = {
+    "legal_name": "Юридическое название",
+    "inn": "ИНН",
+    "legal_address": "Юридический адрес",
+    "privacy_email": "Email для обращений по персональным данным",
+}
+
 
 def _validate_timezone(value: str) -> str:
     try:
@@ -40,6 +48,14 @@ class OrgSettings(BaseModel):
 
     _timezone = field_validator("timezone")(_validate_timezone)
 
+    def missing_legal_fields(self) -> list[str]:
+        return [name for name in LEGAL_FIELD_LABELS if not getattr(self, name)]
+
+    @property
+    def contact_step_enabled(self) -> bool:
+        """The public form asks for a contact only when PD operator details are complete."""
+        return self.collect_contact and not self.missing_legal_fields()
+
     @classmethod
     def from_db(cls, raw: dict[str, Any] | None) -> "OrgSettings":
         return cls.model_validate(raw or {})
@@ -49,7 +65,7 @@ class OrgSettings(BaseModel):
 
 
 # Fields that appear in consent texts: changing them publishes new consent versions.
-LEGAL_FIELDS = frozenset({"legal_name", "inn", "legal_address", "privacy_email"})
+LEGAL_FIELDS = frozenset(LEGAL_FIELD_LABELS)
 
 
 class OrgSettingsUpdate(BaseModel):

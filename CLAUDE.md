@@ -74,7 +74,24 @@ models/*.py      SQLAlchemy 2.0 declarative models only, no logic
   Passwords: argon2.
 - Redis rate limits per IP on `POST /api/v1/auth/login` and on public form POST (`RATE_LIMIT_*`).
 - Manager invitations are copyable links with a token (no email/SMTP in MVP).
-- Bulk QR print PDF uses reportlab; single QR files use segno (PNG/SVG/PDF).
+- `collect_contact` can be enabled only when all PD operator details are filled
+  (`legal_name`, `inn`, `legal_address`, `privacy_email`): API answers 400
+  `legal_details_required` with `fields`. The public form uses `OrgSettings.contact_step_enabled`
+  and silently skips the contact step when details are incomplete.
+- QR codes (`services/qr_render.py`): segno builds the matrix, error level **Q** (no boost),
+  quiet zone 4 modules, PNG ≥ 1000 px. Under every code: «филиал · точка» and the short link
+  as text. PDFs are drawn with reportlab (vector modules, embedded DejaVu Sans from
+  `app/assets/fonts` — no system fonts, Cyrillic everywhere). Print sheets: A4, layouts
+  `1x1` / `2x3` / `3x4`, cells edge to edge with crop marks in the margins.
+- QR management is owner + manager; a manager creates, edits, assigns, downloads and prints
+  only points of their own branch and can assign only employees of their branch. Employees
+  have no QR access.
+- Archiving a branch archives its QR points (employees stay). Archiving a point or employee
+  closes open assignments. `is_active=false` is a pause, not a delete.
+
+> ⚠️ **`PUBLIC_BASE_URL` is baked into every printed QR code.** It must be the final
+> production domain. Never print real QR codes for clients until the domain is fixed:
+> changing it later means reprinting every card, sticker and table tent.
 
 ## Требования законодательства РФ
 

@@ -3,10 +3,11 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFoundError
+from app.core.errors import AppError, NotFoundError
 from app.models import Membership, Organization, ReviewCategory, Role, User
 from app.schemas.auth import MemberOut
 from app.schemas.organization import (
+    LEGAL_FIELD_LABELS,
     LEGAL_FIELDS,
     OrganizationOut,
     OrganizationUpdate,
@@ -15,6 +16,10 @@ from app.schemas.organization import (
 from app.services.consent_service import publish_default_documents
 from app.services.niches import get_niche
 from app.services.scope import AccessScope
+
+
+class LegalDetailsRequiredError(AppError):
+    code = "legal_details_required"
 
 
 async def create_organization(
@@ -77,6 +82,13 @@ async def update_organization(
         changes = data.settings.model_dump(exclude_unset=True)
         current = OrgSettings.from_db(organization.settings)
         merged = OrgSettings.model_validate({**current.model_dump(), **changes})
+        missing = merged.missing_legal_fields()
+        if merged.collect_contact and missing:
+            raise LegalDetailsRequiredError(
+                "Чтобы собирать контакты клиентов, заполните реквизиты оператора "
+                "персональных данных: " + ", ".join(LEGAL_FIELD_LABELS[f] for f in missing),
+                fields=missing,
+            )
         republish_consents = any(
             getattr(current, field) != getattr(merged, field) for field in LEGAL_FIELDS
         )

@@ -36,6 +36,20 @@ def test_org_settings_defaults() -> None:
     assert settings.collect_contact is False
 
 
+def test_contact_step_needs_complete_legal_details() -> None:
+    legal = {
+        "legal_name": "ООО «Лаванда»",
+        "inn": "7701234567",
+        "legal_address": "Москва",
+        "privacy_email": "pd@lavanda.ru",
+    }
+    assert OrgSettings(collect_contact=True, **legal).contact_step_enabled
+    assert not OrgSettings(collect_contact=False, **legal).contact_step_enabled
+    partial = OrgSettings(collect_contact=True, **{**legal, "inn": None})
+    assert not partial.contact_step_enabled
+    assert partial.missing_legal_fields() == ["inn"]
+
+
 def test_org_settings_validation() -> None:
     with pytest.raises(ValidationError):
         OrgSettings(negative_threshold=6)

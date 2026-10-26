@@ -12,8 +12,10 @@ class AppError(Exception):
     code = "bad_request"
     message = "Некорректный запрос"
 
-    def __init__(self, message: str | None = None) -> None:
+    def __init__(self, message: str | None = None, **extra: object) -> None:
         self.message = message or self.message
+        # Machine-readable details for the UI (e.g. which fields to highlight).
+        self.extra = extra
         super().__init__(self.message)
 
 
@@ -62,7 +64,7 @@ async def _handle_app_error(_: Request, exc: Exception) -> JSONResponse:
         headers["WWW-Authenticate"] = "Bearer"
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.message, "code": exc.code},
+        content={"detail": exc.message, "code": exc.code, **exc.extra},
         headers=headers,
     )
 
