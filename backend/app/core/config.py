@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     telegram_bot_username: str = ""
     telegram_link_code_ttl_minutes: int = Field(default=15, gt=0)
 
+    # --- Personal data (152-FZ) ---
+    # Details of the service company processing PD on behalf of salons (named in consents).
+    pd_processor_details: str = ""
+
+    # --- Analytics (Russian services only; empty = disabled) ---
+    yandex_metrika_id: str = ""
+
     # --- Organization defaults ---
     default_timezone: str = "Europe/Moscow"
 

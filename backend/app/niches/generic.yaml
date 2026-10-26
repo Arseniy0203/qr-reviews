@@ -1,0 +1,31 @@
+# Niche: neutral template for any service business.
+code: generic
+title: Универсальный шаблон
+employee_title: сотрудник
+employee_title_plural: сотрудники
+
+categories:
+  - code: quality
+    name: Качество услуги
+  - code: staff
+    name: Сотрудник
+  - code: speed
+    name: Скорость обслуживания
+  - code: cleanliness
+    name: Чистота
+  - code: atmosphere
+    name: Атмосфера
+  - code: price
+    name: Цена
+
+form:
+  title: Как вам у нас?
+  rating_prompt: Оцените обслуживание
+  categories_prompt: Что повлияло на оценку?
+  text_label: Ваш отзыв
+  text_placeholder: Расскажите, что понравилось и что можно улучшить
+  submit: Отправить отзыв
+  thanks_title: Спасибо за отзыв!
+  thanks_text: Мы внимательно читаем каждый отзыв.
+
+contact_offer_default: Оставьте телефон, и мы свяжемся с вами

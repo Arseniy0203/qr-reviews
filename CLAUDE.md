@@ -37,7 +37,14 @@ models/*.py      SQLAlchemy 2.0 declarative models only, no logic
 - Config: only via env (`app/core/config.py`, pydantic-settings). New setting → add to
   `Settings` **and** `.env.example` with a Russian comment.
 - Workers: arq tasks in `app/workers/tasks.py`; services enqueue, never call Telegram inline.
-- Telegram alerts are sent from the worker via plain `httpx` to the Bot API, not aiogram.
+- Notifications go **only** through the `NotificationChannel` interface
+  (`services/notifications.py`). `TelegramChannel` is the first implementation (plain `httpx`
+  to the Bot API, not aiogram). The worker never talks to Telegram directly, so new channels
+  (email, MAX, SMS) are added without touching the worker. `users.telegram_chat_id` stays as
+  Telegram's address field.
+- **Database-level tenant isolation:** references between business tables are composite FKs
+  `(x_id, organization_id) → x(id, organization_id)`. The DB itself rejects a review pointing at
+  another org's branch/point/employee/consent. Keep this pattern for every new table.
 
 ## Product decisions (agreed with the owner — do not change silently)
 
@@ -48,12 +55,17 @@ models/*.py      SQLAlchemy 2.0 declarative models only, no logic
     with another signal (burst or similar text); `AF_IP_HARD_THRESHOLD` (default 20/24h) flags alone.
   - Simhash near-duplicate check only for texts ≥ `AF_SIMHASH_MIN_LENGTH` (30) chars after normalization.
   - Redis down → accept review without flags (fail-open) and log a warning.
-- Never store raw IPs. IP and device id are stored as HMAC-SHA256 with `HASH_SALT`.
 - **Soft delete only** for branches, employees, QR points (`is_active` / `archived_at`).
   Reviews and `qr_assignments` history are never deleted.
 - `QRAssignment`: reassignment closes the open row (`ended_at`) and opens a new one; at most
   one open row per point (partial unique index). `Review.employee_id` is denormalized —
   the employee assigned **at the moment of the review**.
+- **An employee may be assigned to a QR point of another branch** of the same organization
+  (masters often work in several salons). `Review.branch_id` always comes from the **QR point**,
+  not from the employee. Employee stats therefore can span several branches.
+- Review text ≤ 2000 chars (`REVIEW_TEXT_MAX_LENGTH`): DB CHECK + Pydantic.
+- Phones are stored in E.164 (`+79991234567`), normalized by `services/phone.normalize_phone`;
+  DB CHECK `^\+[0-9]{10,15}$`.
 - Stats group by day/week/month **in the organization's timezone** (`OrgSettings.timezone`,
   default `Europe/Moscow`) using `AT TIME ZONE`. MVP computes with SQL aggregates + indexes,
   no pre-aggregation.
@@ -63,6 +75,49 @@ models/*.py      SQLAlchemy 2.0 declarative models only, no logic
 - Redis rate limits per IP on `POST /api/v1/auth/login` and on public form POST (`RATE_LIMIT_*`).
 - Manager invitations are copyable links with a token (no email/SMTP in MVP).
 - Bulk QR print PDF uses reportlab; single QR files use segno (PNG/SVG/PDF).
+
+## Требования законодательства РФ
+
+Обязательны для всего кода. Если задача им противоречит, остановись и спроси.
+
+**152-ФЗ «О персональных данных»** (с 01.09.2025 согласие оформляется отдельным документом):
+- Оператор ПД — компания-клиент (салон). Наш сервис обрабатывает ПД по её поручению;
+  реквизиты сервиса задаются в `PD_PROCESSOR_DETAILS`, реквизиты салона — в `OrgSettings`
+  (`legal_name`, `inn`, `legal_address`, `privacy_email`) и попадают в текст согласия.
+- Тексты согласий хранятся в `consent_documents` (`type`: `pd` | `marketing`, `version`,
+  `text`, `published_at`) отдельно для каждой компании. Опубликованные версии **неизменяемы**
+  (триггер в БД): правка означает публикацию новой версии. Шаблоны — `app/consents/*.txt.j2`
+  (перед продажей тексты должен проверить юрист).
+- Каждое согласие показывается на **отдельной странице**, а форма ссылается на неё.
+- Отзыв хранит, на какой именно документ согласился клиент и когда:
+  `pd_consent_document_id` + `pd_consent_at`, `marketing_consent_document_id` + `marketing_consent_at`.
+- Контакт (имя или телефон) без действующего согласия на ПД запрещён CHECK-ом в БД.
+- **Отзыв согласия** (этап 5): имя и телефон обнуляются во всех отзывах клиента в компании,
+  проставляется `pd_consent_revoked_at` (и `marketing_consent_revoked_at`). Ссылка на документ
+  и дата согласия сохраняются как доказательство. Сам отзыв о качестве остаётся.
+- Хранить ПД только на серверах в РФ (242-ФЗ, локализация).
+- Сырые IP не хранить, только HMAC (`HASH_SALT`).
+
+**38-ФЗ «О рекламе»:**
+- Согласие на рекламные сообщения — отдельная **необязательная** галочка. Обе галочки
+  (ПД и реклама) по умолчанию **выключены**. Без маркетингового согласия клиент всё равно
+  получает обещанный бонус.
+
+**Зарубежные сервисы:**
+- Никаких зарубежных сервисов, обрабатывающих ПД: без Google Analytics, Sentry SaaS, Google Fonts,
+  зарубежных CDN на публичной форме. Аналитика — только Яндекс Метрика, по желанию
+  (`YANDEX_METRIKA_ID`, пусто — выключена). Шрифты — системные или self-hosted.
+
+**Логи:**
+- Не писать в логи телефоны, имена клиентов и тексты отзывов (и тела запросов формы целиком).
+  Логировать можно ID отзыва, ID компании и коды причин антифрода.
+
+## Backlog (вне MVP)
+
+- ML-анализ текстов (аспекты, тренды, дайджест) — см. `ml/README.md`.
+- Биллинг и тарифы, админка владельцев сервиса, интеграции с CRM и онлайн-записью.
+- Каналы уведомлений кроме Telegram (email, MAX, SMS) через `NotificationChannel`.
+- Предупреждение в кабинете, если не заполнены реквизиты оператора ПД.
 
 ## Conventions
 

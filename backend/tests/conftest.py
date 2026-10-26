@@ -2,6 +2,8 @@
 
 Tests run against a real PostgreSQL database (TEST_DATABASE_URL) and Redis
 (TEST_REDIS_URL, a separate logical DB), never against the dev database.
+The schema is rebuilt with Alembic (downgrade base -> upgrade head) once per run,
+which also checks that migrations apply and roll back cleanly.
 """
 
 import os
@@ -17,12 +19,50 @@ os.environ.setdefault("HASH_SALT", "test-hash-salt")
 os.environ.setdefault("INTERNAL_API_SECRET", "test-internal-secret")
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 
+import asyncio
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db import get_sessionmaker
+from app.core.redis import get_redis
 from app.main import app
+from app.models import Base
+
+ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
+
+assert "test" in os.environ["DATABASE_URL"], "Refusing to run tests on a non-test database"
+assert not os.environ["REDIS_URL"].endswith("/0"), "Refusing to run tests on Redis DB 0"
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def _migrated_database() -> None:
+    config = Config(str(ALEMBIC_INI))
+    # env.py runs its own event loop, so Alembic must run outside the test loop.
+    await asyncio.to_thread(command.downgrade, config, "base")
+    await asyncio.to_thread(command.upgrade, config, "head")
+
+
+@pytest.fixture(autouse=True)
+async def _clean_state() -> AsyncIterator[None]:
+    yield
+    tables = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
+    async with get_sessionmaker()() as session:
+        await session.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+        await session.commit()
+    await get_redis().flushdb()
+
+
+@pytest.fixture
+async def session() -> AsyncIterator[AsyncSession]:
+    async with get_sessionmaker()() as db_session:
+        yield db_session
 
 
 @pytest.fixture

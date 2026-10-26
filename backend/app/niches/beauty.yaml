@@ -1,0 +1,31 @@
+# Niche: beauty salons and barbershops.
+code: beauty
+title: Салоны красоты и барбершопы
+employee_title: мастер
+employee_title_plural: мастера
+
+categories:
+  - code: quality
+    name: Качество работы
+  - code: specialist
+    name: Мастер
+  - code: booking
+    name: Запись
+  - code: hygiene
+    name: Стерильность
+  - code: atmosphere
+    name: Атмосфера
+  - code: price
+    name: Цена
+
+form:
+  title: Как прошёл ваш визит?
+  rating_prompt: Оцените визит
+  categories_prompt: Что повлияло на оценку?
+  text_label: Ваш отзыв
+  text_placeholder: Расскажите, что понравилось и что можно улучшить
+  submit: Отправить отзыв
+  thanks_title: Спасибо за отзыв!
+  thanks_text: Мы читаем каждый отзыв — это помогает мастерам становиться лучше.
+
+contact_offer_default: Оставьте телефон и получите скидку 10% на следующий визит
