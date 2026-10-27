@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.api.internal import router as internal_router
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.db import dispose_engine, get_engine
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(api_router)
     app.include_router(public_form_router)
+    app.include_router(internal_router)
 
     if settings.cors_origin_list:
         app.add_middleware(
