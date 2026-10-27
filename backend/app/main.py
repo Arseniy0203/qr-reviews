@@ -8,11 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.api.internal import router as internal_router
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.db import dispose_engine, get_engine
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
+from app.core.queue import close_queue
 from app.core.redis import close_redis, get_redis
 from app.public_form.router import router as public_form_router
 
@@ -22,6 +24,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
+    await close_queue()
     await close_redis()
     await dispose_engine()
 
@@ -42,6 +45,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     app.include_router(api_router)
     app.include_router(public_form_router)
+    app.include_router(internal_router)
 
     if settings.cors_origin_list:
         app.add_middleware(

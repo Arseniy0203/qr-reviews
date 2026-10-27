@@ -8,10 +8,12 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, NotFoundError
+from app.core.redis import get_redis
 from app.core.security import hash_identifier
 from app.models import (
     Branch,
@@ -26,7 +28,7 @@ from app.models import (
 )
 from app.schemas.organization import OrgSettings
 from app.schemas.review import ReviewSubmission
-from app.services import antifraud
+from app.services import alert_service, antifraud
 from app.services.consent_service import get_current_document
 from app.services.names import first_name, genitive_first_name
 from app.services.niches import NicheTemplate, get_niche
@@ -160,7 +162,30 @@ async def submit_review(
         review.rating,
         review.suspicious_reasons,
     )
+    if review.rating <= public.settings.negative_threshold:
+        await alert_service.enqueue_negative_alert(review.id)
     return review
+
+
+HONEYPOT_COUNTER_TTL_SECONDS = 90 * 24 * 3600
+
+
+def honeypot_counter_key(organization_id: uuid.UUID, day: str) -> str:
+    return f"metrics:honeypot:{organization_id}:{day}"
+
+
+async def record_honeypot_hit(public: PublicPoint) -> None:
+    """Count a bot that filled the honeypot. Nothing is stored in the DB; ids only, no PD."""
+    point = public.point
+    logger.warning("Honeypot hit: org=%s point=%s", point.organization_id, point.id)
+    key = honeypot_counter_key(point.organization_id, datetime.now(UTC).date().isoformat())
+    try:
+        async with get_redis().pipeline(transaction=True) as pipe:
+            pipe.incr(key)
+            pipe.expire(key, HONEYPOT_COUNTER_TTL_SECONDS, nx=True)
+            await pipe.execute()
+    except RedisError:
+        logger.warning("Honeypot counter unavailable (Redis error)")
 
 
 # --------------------------------------------------------------------------- contact step

@@ -207,6 +207,7 @@ async def submit_review(
 
     form = await request.form()
     if form.get("website"):  # honeypot filled: a bot; pretend success, store nothing
+        await review_service.record_honeypot_hit(public)
         return RedirectResponse(f"/r/{token}/thanks", status_code=303)
 
     values = {

@@ -7,7 +7,7 @@ categories, writes a text, optionally leaves a phone. Owners see stats in the da
 and get Telegram alerts about negative reviews. First niche: beauty salons / barbershops.
 
 **Status and the next steps live in [`docs/HANDOFF.md`](docs/HANDOFF.md). Read it first.**
-Stages 1–5 are done; stage 6 (worker, bot, alerts) is next.
+Stages 1–6 are done; stage 7 (stats API) is next.
 
 ## Repository layout
 
@@ -16,7 +16,7 @@ Stages 1–5 are done; stage 6 (worker, bot, alerts) is next.
 | `backend/` | FastAPI API (`/api/v1`), public review form (`/r/{token}`, Jinja2), arq worker, Alembic, seed |
 | `frontend/` | Dashboard: React 19 + Vite + TS, TanStack Query, React Router, Tailwind 4, ECharts (shell only so far) |
 | `bot/` | aiogram 3 bot — **only** links Telegram chats to users (`/start <code>`) |
-| `ml/` | Placeholder for future text analytics (README lands in stage 6) |
+| `ml/` | Plan for future text analytics (`README.md`); worker hook `analyze_review_stub` |
 | `infra/` | nginx (dev `nginx.conf`, prod `templates/default.conf.template` + Let's Encrypt), postgres init, scripts |
 | `docs/` | `HANDOFF.md` — status, plan, open questions, setup from scratch |
 
@@ -33,7 +33,8 @@ models/*.py          SQLAlchemy 2.x declarative models, no logic
 
 - `schemas/` — Pydantic v2 request/response models; routers never return ORM objects directly.
 - `core/` — `config` (pydantic-settings), `db`, `redis`, `security` (argon2, JWT, HMAC, signed
-  values), `errors` (typed `AppError` → JSON `{detail, code, ...extra}`), `rate_limit`, `logging`.
+  values), `errors` (typed `AppError` → JSON `{detail, code, ...extra}`), `rate_limit`, `logging`,
+  `queue` (arq pool for the API; `enqueue` is fail-open).
 - `api/deps.py` — `SessionDep`, `CurrentUser`, `ScopeDep` / `OwnerScope` / `ManagerScope`,
   `login_rate_limit`. The membership is resolved **from the DB on every request**
   (`X-Organization-Id` header picks the org, default = first membership), so role changes
@@ -43,16 +44,27 @@ models/*.py          SQLAlchemy 2.x declarative models, no logic
 - `services/` — `auth_service`, `invitation_service`, `organization_service`, `branch_service`,
   `employee_service`, `category_service`, `qr_service` + `qr_render`, `assignments`,
   `review_service` (public intake), `antifraud`, `contact_service` (PD revocation),
-  `consent_service`, `niches`, `names` (genitive), `phone` (E.164).
+  `consent_service`, `niches`, `names` (genitive), `phone` (E.164), `notifications`,
+  `alert_service` (negative alerts), `telegram_service` (link codes).
 - Niche-specific things (categories, «мастер», form texts) live in `app/niches/*.yaml`
   (`beauty`, `generic`). The core never hardcodes a niche. Categories (with a stable `code`)
   are copied into `review_categories` on organization creation and editable afterwards.
 - Config only via env. New setting → `Settings` **and** `.env.example` with a Russian comment.
-- Workers: arq tasks in `app/workers/tasks.py`; services enqueue, never call Telegram inline.
+- Workers: arq tasks in `app/workers/tasks.py` (thin: open a session, call a service, map
+  errors to `Retry`); services enqueue, never call Telegram inline. Worker `ctx["channels"]`
+  holds the enabled channels (`build_channels`: no `TELEGRAM_BOT_TOKEN` → no Telegram).
 - Notifications go **only** through a `NotificationChannel` interface
-  (`services/notifications.py`, stage 6). `TelegramChannel` is the first implementation
-  (plain `httpx` to the Bot API, not aiogram). New channels (email, MAX, SMS) must be
-  addable without touching the worker. `users.telegram_chat_id` is Telegram's address field.
+  (`services/notifications.py`): `address_for(user)` + `send(address, Message)`.
+  `TelegramChannel` is the first implementation (plain `httpx` to the Bot API, not aiogram;
+  plain text, no `parse_mode`, so review texts need no escaping). Errors:
+  `TemporaryDeliveryError` (429/5xx/transport → arq retry, `max_tries=5`),
+  `RecipientUnreachableError` (403 / chat not found → logged, not retried), `DeliveryError`.
+  New channels (email, MAX, SMS) must be addable without touching the worker.
+  `users.telegram_chat_id` is Telegram's address field. The `httpx` logger is set to WARNING:
+  Bot API URLs contain the token.
+- Internal API for the bot: `app/api/internal.py`, prefix `/internal`, header
+  `X-Internal-Secret` = `INTERNAL_API_SECRET` (constant-time compare, wrong → 404).
+  nginx answers 404 for `/internal/` from outside.
 
 ### Data model highlights
 
@@ -122,7 +134,9 @@ models/*.py          SQLAlchemy 2.x declarative models, no logic
   when unsure), otherwise the niche's neutral title.
 - Protection: signed `form_token` (2 h, bound to the point), `qr_device` cookie (HttpOnly,
   path `/r`, 2 y), rate limit, honeypot. **Filled honeypot → answered as success, nothing
-  stored** (a bot is not a customer review; awaiting final owner confirmation).
+  stored** (a bot is not a customer review; confirmed by the owner). Each hit is still
+  counted (log event / metric with point and org IDs only, no PD) so an attack on the form
+  is visible.
 - Unknown/archived point → 404 stub; paused point → 200 stub «приём приостановлен».
 - **No review gating:** Yandex Maps / 2GIS buttons on the thanks page for every rating, only if
   the URLs are set in settings.
@@ -133,9 +147,33 @@ models/*.py          SQLAlchemy 2.x declarative models, no logic
   same org), `ip_repeat` — IP is a **weak** signal: soft threshold only together with a burst or
   duplicate text, hard threshold (≥ 20/24 h) alone. Redis down → no flags (fail-open).
 
+**Negative alerts** (stage 6) — suspicious reviews (`is_suspicious`) **are alerted too**, marked
+with ⚠️ and the antifraud reason codes, so a fraudster cannot bury real negative under fakes.
+Alerts are sent **immediately**, also at night (no quiet hours; users can mute the bot).
+Default `negative_threshold` stays **3** (1–3★ is negative), confirmed by the client.
+Every role (employees too) can link Telegram, but negative alerts go only to owners and the
+branch's managers. Employees get nothing yet; a weekly digest of their ratings is backlog.
+Flow: `submit_review` → `send_negative_alert` (job id `negative-alert:<review>`) → one
+`deliver_alert` job per recipient and channel (job id `alert:<review>:<user>:<channel>`), so a
+retry never re-sends to people who already got it. The message is rebuilt from the DB on
+every attempt and never contains the customer's name or phone. Link to the dashboard:
+`DASHBOARD_BASE_URL/reviews/<id>` (route lands in stage 8).
+
+**Telegram linking** — `POST /api/v1/telegram/link-code` → `t.me/<bot>?start=<code>` (code:
+`token_urlsafe(24)`, hash stored, TTL `TELEGRAM_LINK_CODE_TTL_MINUTES`, a new code deletes the
+user's unused ones). Bot `/start <code>` (private chats only) → `/internal/telegram/link`;
+the code is spent atomically (`UPDATE … RETURNING`). One chat = one account: linking a chat
+to another account unlinks it from the previous one. `DELETE /api/v1/telegram/link` unlinks.
+
 **Stats** (stage 7) — group by day/week/month **in the organization's timezone**
 (`OrgSettings.timezone`, default `Europe/Moscow`) with `AT TIME ZONE`; SQL aggregates + the
 indexes above, no pre-aggregation in MVP.
+
+**Customer contacts in the review feed** (stage 7) — a manager sees customer phones/names only
+for reviews of **their branch** (they call unhappy customers). The owner can turn this off:
+`OrgSettings.managers_see_contacts` (default `true`); when `false`, contacts are hidden from
+managers in API responses. Employees never see contacts. Phone search and consent revocation
+stay owner-only.
 
 ## Deviations from the original spec (approved)
 

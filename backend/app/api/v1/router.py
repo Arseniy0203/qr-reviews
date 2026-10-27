@@ -9,6 +9,7 @@ from app.api.v1 import (
     organization,
     qr_points,
     reviews,
+    telegram,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -20,3 +21,4 @@ api_router.include_router(employees.router)
 api_router.include_router(categories.router)
 api_router.include_router(qr_points.router)
 api_router.include_router(reviews.router)
+api_router.include_router(telegram.router)
