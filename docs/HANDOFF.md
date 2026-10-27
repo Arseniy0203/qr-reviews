@@ -29,19 +29,19 @@ B2B-сервис сбора отзывов через QR-коды. Бизнес 
 | 3 | Авторизация, роли, приглашения | ✅ готово | `a7ba294` |
 | 4 | CRUD филиалов/сотрудников/категорий/QR, переназначение, PNG/SVG/PDF, печать A4 | ✅ готово | `c905899` |
 | 5 | Публичная форма, согласия, антифрод, rate limit, отзыв согласия | ✅ готово | `bc7acbf` |
-| 6 | Воркер arq, `NotificationChannel`, бот aiogram, алерты о негативе | ⏭ **следующий** | — |
-| 7 | API статистики | ⬜ | — |
+| 6 | Воркер arq, `NotificationChannel`, бот aiogram, алерты о негативе | ✅ готово | `831c08a`…`038b9d7` |
+| 7 | API статистики | ⏭ **следующий** | — |
 | 8 | Дашборд (React) | ⬜ | — |
 | 9 | Добивка тестов, CI GitHub Actions, README | ⬜ | — |
 
-Состояние на момент передачи: **154 теста бэкенда и 2 теста бота проходят**, ruff чистый,
+Текущее состояние: **193 теста бэкенда и 9 тестов бота проходят**, ruff чистый,
 фронтенд собирается (пока это заглушка). Порядок работы, который договорились соблюдать:
 этап → тесты и линтер → коммит → отчёт владельцу. Если требование неоднозначно или хочется
 отступить от стека, **спросить владельца, а не решать молча**.
 
 ## 3. Требования к оставшимся этапам
 
-### Этап 6 — воркер, бот, алерты
+### Этап 6 — воркер, бот, алерты (✅ сделано, детали реализации — в CLAUDE.md)
 
 Из ТЗ и поправок владельца:
 
@@ -201,7 +201,7 @@ Seed печатает логины и ссылки на все QR-точки. С
 ### 5.5. Проверить
 
 ```powershell
-docker compose exec backend pytest -q              # ~154 теста, ~40 с
+docker compose exec backend pytest -q              # ~193 теста
 docker compose exec backend ruff check .
 docker compose exec backend ruff format --check .
 docker compose exec bot pytest -q
@@ -218,6 +218,13 @@ docker compose exec frontend npm run build
   `New-NetFirewallRule -DisplayName "QR Reviews dev 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private`.
 - Для сканирования QR телефоном временно задайте `PUBLIC_BASE_URL=http://<IPv4>:8080`
   и выполните `docker compose up -d backend`.
+- Проверка Telegram вживую (нужен свой тестовый бот от @BotFather):
+  1. впишите `TELEGRAM_BOT_TOKEN` и `TELEGRAM_BOT_USERNAME` в `.env`,
+     затем `docker compose up -d backend worker bot`;
+  2. в Swagger под `owner@lavanda.demo` вызовите `POST /api/v1/telegram/link-code`,
+     откройте `deep_link` и нажмите «Старт» — бот ответит «Готово!»;
+  3. оставьте через форму отзыв на 1–3★ — алерт придёт в этот чат.
+  Без токена бот и алерты просто выключены (в логах предупреждение), остальное работает.
 
 ### 5.6. Подводные камни Windows
 
