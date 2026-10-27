@@ -9,6 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.redis import get_redis
 from app.models import (
     ConsentType,
     Employee,
@@ -18,6 +19,7 @@ from app.models import (
     ReviewCategory,
 )
 from app.services.consent_service import get_current_document, publish_document
+from app.services.review_service import honeypot_counter_key
 from tests.factories import Team, make_tenant
 from tests.public_helpers import (
     LEGAL,
@@ -243,6 +245,9 @@ async def test_honeypot_drops_bots(
     response = await post_review(client, team.tenant.point.token, extra={"website": "spam.ru"})
     assert response.status_code == 303
     assert await latest_review(session) is None
+    await post_review(client, team.tenant.point.token, extra={"website": "spam.ru"})
+    key = honeypot_counter_key(team.tenant.org.id, datetime.now(UTC).date().isoformat())
+    assert await get_redis().get(key) == "2"
 
 
 async def test_form_rate_limit_per_ip(
