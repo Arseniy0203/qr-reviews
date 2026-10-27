@@ -137,6 +137,10 @@ models/*.py          SQLAlchemy 2.x declarative models, no logic
 
 **Negative alerts** (stage 6) — suspicious reviews (`is_suspicious`) **are alerted too**, marked
 with ⚠️ and the antifraud reason codes, so a fraudster cannot bury real negative under fakes.
+Alerts are sent **immediately**, also at night (no quiet hours; users can mute the bot).
+Default `negative_threshold` stays **3** (1–3★ is negative), confirmed by the client.
+Every role (employees too) can link Telegram, but negative alerts go only to owners and the
+branch's managers. Employees get nothing yet; a weekly digest of their ratings is backlog.
 
 **Stats** (stage 7) — group by day/week/month **in the organization's timezone**
 (`OrgSettings.timezone`, default `Europe/Moscow`) with `AT TIME ZONE`; SQL aggregates + the
