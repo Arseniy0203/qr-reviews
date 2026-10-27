@@ -28,7 +28,7 @@ from app.models import (
 )
 from app.schemas.organization import OrgSettings
 from app.schemas.review import ReviewSubmission
-from app.services import antifraud
+from app.services import alert_service, antifraud
 from app.services.consent_service import get_current_document
 from app.services.names import first_name, genitive_first_name
 from app.services.niches import NicheTemplate, get_niche
@@ -162,6 +162,8 @@ async def submit_review(
         review.rating,
         review.suspicious_reasons,
     )
+    if review.rating <= public.settings.negative_threshold:
+        await alert_service.enqueue_negative_alert(review.id)
     return review
 
 

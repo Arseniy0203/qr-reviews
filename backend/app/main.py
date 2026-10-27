@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.core.db import dispose_engine, get_engine
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
+from app.core.queue import close_queue
 from app.core.redis import close_redis, get_redis
 from app.public_form.router import router as public_form_router
 
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
+    await close_queue()
     await close_redis()
     await dispose_engine()
 
